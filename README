@@ -1,0 +1,172 @@
+Building a Command Line Tool with Python
+
+Description
+Python is a fantastic language for building all sorts of things, from small scripts up to gigantic web applications. In this Hands-On Lab, we're going to build a robust command line application. By the time we're finished, we'll have gone through the complete process of starting a Python project to having an installable command line application.
+
+Objectives
+Successfully complete this lab by achieving the following learning objectives:
+Create package.
+To begin, we're going to structure our package with all of our business logic within a src directory. Here's a way we can create our basic structure:
+
+$ mkdir hr
+$ cd hr
+$ mkdir -p src/hr
+$ touch src/hr/__init__.py
+$ touch README.rst
+Next, we'll create a virtualenv for our project using pipenv:
+
+$ pipenv --python python3.7
+Finally, we'll create our setup.py so that we can install our package later.
+
+Note: Here's the official documentation on how to write a setup script.
+
+setup.py
+
+from setuptools import setup, find_packages
+
+with open('README.rst', encoding='UTF-8') as f:
+  readme = f.read()
+
+setup(
+    name='hr',
+    version='1.0.0',
+    description='Command line user export utility',
+    long_description=readme,
+    author='Your Name',
+    author_email='your_email@example.com',
+    packages=find_packages('src'),
+    package_dir={'': 'src'},
+    install_requires=[]
+)
+Implement CLI interface.
+With the package created, we're going to build the application one logical piece at a time. Let's start by building the CLI using argparse and the add_argument method.
+
+src/hr/cli.py
+
+import argparse
+
+def create_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--path', help='the path to the export file')
+    parser.add_argument('--format', default='json', choices=['json', 'csv'], type=str.lower)
+    return parser
+Now we have a parser that we can use in the main function for our tool.
+
+Format user information.
+Before we can export the information about the system's users, we'll need to get the information from the system's password database in a format that we can easily work with. We'll rely on the pwd package to do this. Let's add some functions to handle this in src/hr/users.py:
+
+src/hr/users.py
+
+import pwd
+
+def fetch_users():
+    users = []
+    for user in pwd.getpwall():
+        if user.pw_uid >= 1000 and 'home' in user.pw_dir:
+            users.append({
+              'name': user.pw_name,
+              'id': user.pw_uid,
+              'home': user.pw_dir,
+              'shell': user.pw_shell,
+            })
+    return users
+This fetch_users function will handle formatting all of the information that we need before we export it.
+
+Write JSON and CSV.
+Before wiring everything together, we're going to create a few functions to handle exporting our user information. These will heavily rely on the standard library json and csv packages. Let's add our functions to src/hr/export.py, starting with exporting JSON:
+
+src/hr/export.py
+
+import json
+
+def to_json_file(export_file, users):
+    json.dump(users, export_file, indent=4)
+    export_file.close()
+This function basically just wraps the built in json.dump function while also closing the file.
+
+The CSV export will be a little more complicated:
+
+src/hr/export.py
+
+import csv
+import json
+
+def to_json_file(export_file, users):
+    json.dump(users, export_file, indent=4)
+    export_file.close()
+
+def to_csv_file(export_file, users):
+    export_file.write('name,id,home,shell\n')
+    writer = csv.writer(export_file)
+    rows = [[user['name'], user['id'], user['home'], user['shell']] for user in users]
+    writer.writerows(rows)
+    export_file.close()
+Wire the pieces together.
+With all of the individual parts ready, it's time to put them all together. Let's create a main function as part of our hr/src/cli.py file:
+
+src/hr/cli.py
+
+import argparse
+
+def create_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--path', help='the path to the export file')
+    parser.add_argument('--format', default='json', choices=['json', 'csv'], type=str.lower)
+    return parser
+
+def main():
+    import sys
+    from hr import export, users
+    from hr import users as u
+
+    args = create_parser().parse_args()
+    users = u.fetch_users()
+
+    if args.path:
+        file = open(args.path, 'w', newline='')
+    else:
+        file = sys.stdout
+
+    if args.format == 'json':
+        export.to_json_file(file, users)
+    else:
+        export.to_csv_file(file, users)
+Now that we have a function to run, we need to add it as one of the console_scripts in our setup.py:
+
+setup.py
+
+from setuptools import setup, find_packages
+
+with open('README.rst', encoding='UTF-8') as f:
+  readme = f.read()
+
+setup(
+    name='hr',
+    version='1.0.0',
+    description='Command line user export utility',
+    long_description=readme,
+    author='Your Name',
+    author_email='your_email@example.com',
+    packages=find_packages('src'),
+    package_dir={'': 'src'},
+    install_requires=[],
+    entry_points={
+        'console_scripts': 'hr=hr.cli:main',
+    },
+)
+Install the `hr` tool.
+With everything built and wired together, we're ready to install the tool so that our user can access it:
+
+$ pip3.7 install --user -e .
+Obtaining file:///home/cloud_user/hr
+Installing collected packages: hr
+  Running setup.py develop for hr
+Successfully installed hr
+$ hr --help
+usage: hr [-h] [--path PATH] [--format {json,csv}]
+
+optional arguments:
+  -h, --help           show this help message and exit
+  --path PATH          the path to the export file
+  --format {json,csv}
+Ready? Let's get hands on!
